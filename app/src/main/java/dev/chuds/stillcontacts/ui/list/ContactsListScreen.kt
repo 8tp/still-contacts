@@ -9,15 +9,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicTextField
@@ -41,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import dev.chuds.stillcontacts.data.Contact
 import dev.chuds.stillcontacts.ui.components.StillDivider
 import dev.chuds.stillcontacts.ui.components.StillLetterRail
+import dev.chuds.stillcontacts.ui.components.StillVerb
 import dev.chuds.stillcontacts.ui.theme.StillColors
 import dev.chuds.stillcontacts.ui.theme.StillTypography
 import kotlinx.coroutines.launch
@@ -321,7 +319,6 @@ private fun PermissionPrompt(onRequestRead: () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FooterBar(
     modifier: Modifier = Modifier,
@@ -330,45 +327,28 @@ private fun FooterBar(
     onNew: () -> Unit,
     onSettings: () -> Unit,
 ) {
-    val searchInteraction = remember { MutableInteractionSource() }
-    val newInteraction = remember { MutableInteractionSource() }
-    val settingsInteraction = remember { MutableInteractionSource() }
     Row(
         modifier = modifier.padding(horizontal = 24.dp, vertical = 22.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
+        StillVerb(
             text = if (searching) "cancel" else "search",
-            style = StillTypography.Menu,
+            onClick = onSearchToggle,
+            bordered = true,
             color = if (searching) StillColors.SoftWhite else StillColors.MutedWhite,
-            modifier = Modifier.combinedClickable(
-                interactionSource = searchInteraction,
-                indication = null,
-                onClick = onSearchToggle,
-            ),
         )
-        Spacer(Modifier.width(8.dp))
-        Text(
+        StillVerb(
             text = "new",
-            style = StillTypography.Menu,
+            onClick = onNew,
+            bordered = true,
             color = StillColors.SoftWhite,
-            modifier = Modifier.combinedClickable(
-                interactionSource = newInteraction,
-                indication = null,
-                onClick = onNew,
-            ),
         )
-        Spacer(Modifier.width(8.dp))
-        Text(
+        StillVerb(
             text = "settings",
-            style = StillTypography.Menu,
+            onClick = onSettings,
+            bordered = true,
             color = StillColors.MutedWhite,
-            modifier = Modifier.combinedClickable(
-                interactionSource = settingsInteraction,
-                indication = null,
-                onClick = onSettings,
-            ),
         )
     }
 }

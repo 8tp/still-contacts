@@ -19,7 +19,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.chuds.stillcontacts.data.AccountTarget
@@ -40,6 +42,7 @@ import dev.chuds.stillcontacts.ui.detail.ContactDetailScreen
 import dev.chuds.stillcontacts.ui.edit.ContactEditScreen
 import dev.chuds.stillcontacts.ui.list.ContactsListScreen
 import dev.chuds.stillcontacts.ui.settings.SettingsScreen
+import dev.chuds.stillcontacts.ui.theme.LocalHaptics
 import dev.chuds.stillcontacts.ui.theme.LocalStillTypography
 import dev.chuds.stillcontacts.ui.theme.stillTypographyFor
 import java.text.SimpleDateFormat
@@ -199,8 +202,20 @@ fun StillContactsApp(
     BackHandler(enabled = route !is Route.List) { route = Route.List }
 
     val typography = remember(settings.fontPreset) { stillTypographyFor(settings.fontPreset) }
+    val hapticFeedback = LocalHapticFeedback.current
+    val hapticsEnabled = settings.hapticsEnabled
+    val haptics: () -> Unit = remember(hapticFeedback, hapticsEnabled) {
+        if (hapticsEnabled) {
+            { hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove) }
+        } else {
+            { }
+        }
+    }
 
-    CompositionLocalProvider(LocalStillTypography provides typography) {
+    CompositionLocalProvider(
+        LocalStillTypography provides typography,
+        LocalHaptics provides haptics,
+    ) {
         when (val current = route) {
             Route.List -> {
                 ContactsListScreen(
@@ -293,7 +308,6 @@ fun StillContactsApp(
             Route.Settings -> {
                 SettingsScreen(
                     settings = settings,
-                    contactsCount = contacts.size,
                     writableAccounts = writableAccounts,
                     onCycleFontPreset = {
                         scope.launch {
@@ -324,6 +338,9 @@ fun StillContactsApp(
                             }
                             prefs.setSortOrder(next)
                         }
+                    },
+                    onToggleHaptics = {
+                        scope.launch { prefs.setHapticsEnabled(!settings.hapticsEnabled) }
                     },
                     onPickAccount = { picked ->
                         scope.launch {

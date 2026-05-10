@@ -3,6 +3,7 @@ package dev.chuds.stillcontacts.data
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -21,6 +22,7 @@ private val NAME_DISPLAY_ORDER_KEY = stringPreferencesKey("name_display_order")
 private val SORT_ORDER_KEY = stringPreferencesKey("sort_order")
 private val DEFAULT_ACCOUNT_NAME_KEY = stringPreferencesKey("default_account_name")
 private val DEFAULT_ACCOUNT_TYPE_KEY = stringPreferencesKey("default_account_type")
+private val HAPTICS_ENABLED_KEY = booleanPreferencesKey("haptics_enabled")
 
 enum class FontPreset { System, Editorial, Terminal, Grotesk }
 
@@ -34,6 +36,7 @@ data class StillContactsPreferences(
     val sortOrder: SortOrder = SortOrder.Given,
     val defaultAccountName: String? = null,
     val defaultAccountType: String? = null,
+    val hapticsEnabled: Boolean = true,
 ) {
     val accountTarget: AccountTarget
         get() = if (defaultAccountName != null && defaultAccountType != null) {
@@ -60,6 +63,7 @@ class PreferencesRepository(private val context: Context) {
                     ?: SortOrder.Given,
                 defaultAccountName = prefs[DEFAULT_ACCOUNT_NAME_KEY],
                 defaultAccountType = prefs[DEFAULT_ACCOUNT_TYPE_KEY],
+                hapticsEnabled = prefs[HAPTICS_ENABLED_KEY] ?: true,
             )
         }
 
@@ -73,6 +77,10 @@ class PreferencesRepository(private val context: Context) {
 
     suspend fun setSortOrder(order: SortOrder) {
         context.preferencesDataStore.edit { it[SORT_ORDER_KEY] = order.name }
+    }
+
+    suspend fun setHapticsEnabled(enabled: Boolean) {
+        context.preferencesDataStore.edit { it[HAPTICS_ENABLED_KEY] = enabled }
     }
 
     suspend fun setDefaultAccount(name: String?, type: String?) {

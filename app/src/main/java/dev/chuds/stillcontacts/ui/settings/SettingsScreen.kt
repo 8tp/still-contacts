@@ -34,6 +34,7 @@ import dev.chuds.stillcontacts.data.SortOrder
 import dev.chuds.stillcontacts.data.StillContactsPreferences
 import dev.chuds.stillcontacts.ui.components.StillMenuItem
 import dev.chuds.stillcontacts.ui.components.StillSectionCard
+import dev.chuds.stillcontacts.ui.components.StillVerb
 import dev.chuds.stillcontacts.ui.theme.StillColors
 import dev.chuds.stillcontacts.ui.theme.StillTypography
 import kotlinx.coroutines.delay
@@ -42,11 +43,11 @@ import kotlinx.coroutines.delay
 @Composable
 fun SettingsScreen(
     settings: StillContactsPreferences,
-    contactsCount: Int,
     writableAccounts: List<AccountTarget.Named>,
     onCycleFontPreset: () -> Unit,
     onCycleNameDisplayOrder: () -> Unit,
     onCycleSortOrder: () -> Unit,
+    onToggleHaptics: () -> Unit,
     onPickAccount: (AccountTarget) -> Unit,
     onImport: () -> Unit,
     onExportAll: () -> Unit,
@@ -102,6 +103,12 @@ fun SettingsScreen(
                     title = "sort order",
                     subtitle = settings.sortOrder.label(),
                     onClick = onCycleSortOrder,
+                )
+                StillMenuItem(
+                    title = "haptic feedback",
+                    subtitle = if (settings.hapticsEnabled) "subtle vibration on taps · on"
+                    else "subtle vibration on taps · off",
+                    onClick = onToggleHaptics,
                 )
             }
 
@@ -163,45 +170,6 @@ fun SettingsScreen(
                     },
                 )
             }
-
-            Spacer(Modifier.height(20.dp))
-
-            StillSectionCard {
-                StillMenuItem(
-                    title = "ContactsContract is the source of truth",
-                    subtitle = "$contactsCount in the system provider",
-                    enabled = false,
-                    onClick = {},
-                )
-                StillMenuItem(
-                    title = "no internet",
-                    subtitle = "the manifest declares no network permission",
-                    enabled = false,
-                    onClick = {},
-                )
-                StillMenuItem(
-                    title = "no analytics",
-                    subtitle = "no telemetry, no firebase, no play services",
-                    enabled = false,
-                    onClick = {},
-                )
-            }
-
-            Spacer(Modifier.height(20.dp))
-
-            Text(
-                text = "still ecosystem",
-                style = StillTypography.Caption,
-                color = StillColors.Gray,
-                modifier = Modifier.padding(bottom = 8.dp),
-            )
-            Row {
-                Text("launcher", style = StillTypography.Caption, color = StillColors.DimGray)
-                Spacer(Modifier.padding(horizontal = 8.dp))
-                Text("notes", style = StillTypography.Caption, color = StillColors.DimGray)
-                Spacer(Modifier.padding(horizontal = 8.dp))
-                Text("cal", style = StillTypography.Caption, color = StillColors.DimGray)
-            }
         }
 
         FooterBar(
@@ -237,28 +205,17 @@ private fun AccountChoice(label: String, active: Boolean, onClick: () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FooterBar(
     modifier: Modifier = Modifier,
     onBack: () -> Unit,
 ) {
-    val interaction = remember { MutableInteractionSource() }
     Row(
         modifier = modifier.padding(horizontal = 24.dp, vertical = 22.dp),
-        horizontalArrangement = Arrangement.Start,
+        horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = "back",
-            style = StillTypography.Menu,
-            color = StillColors.MutedWhite,
-            modifier = Modifier.combinedClickable(
-                interactionSource = interaction,
-                indication = null,
-                onClick = onBack,
-            ),
-        )
+        StillVerb(text = "back", onClick = onBack, bordered = true)
     }
 }
 

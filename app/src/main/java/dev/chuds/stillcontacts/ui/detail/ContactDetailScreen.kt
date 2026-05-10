@@ -29,6 +29,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import dev.chuds.stillcontacts.data.ContactDetail
 import dev.chuds.stillcontacts.data.TypedValue
+import dev.chuds.stillcontacts.ui.components.StillVerb
 import dev.chuds.stillcontacts.ui.theme.StillColors
 import dev.chuds.stillcontacts.ui.theme.StillTypography
 import java.time.format.DateTimeFormatter
@@ -192,7 +193,6 @@ private fun MetaRow(label: String, value: String) {
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FooterBar(
     modifier: Modifier = Modifier,
@@ -200,43 +200,13 @@ private fun FooterBar(
     onEdit: () -> Unit,
     onExport: () -> Unit,
 ) {
-    val backInteraction = remember { MutableInteractionSource() }
-    val editInteraction = remember { MutableInteractionSource() }
-    val exportInteraction = remember { MutableInteractionSource() }
     Row(
         modifier = modifier.padding(horizontal = 24.dp, vertical = 22.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = "back",
-            style = StillTypography.Menu,
-            color = StillColors.MutedWhite,
-            modifier = Modifier.combinedClickable(
-                interactionSource = backInteraction,
-                indication = null,
-                onClick = onBack,
-            ),
-        )
-        Text(
-            text = "edit",
-            style = StillTypography.Menu,
-            color = StillColors.SoftWhite,
-            modifier = Modifier.combinedClickable(
-                interactionSource = editInteraction,
-                indication = null,
-                onClick = onEdit,
-            ),
-        )
-        Text(
-            text = "export",
-            style = StillTypography.Menu,
-            color = StillColors.MutedWhite,
-            modifier = Modifier.combinedClickable(
-                interactionSource = exportInteraction,
-                indication = null,
-                onClick = onExport,
-            ),
-        )
+        StillVerb(text = "back", onClick = onBack, bordered = true, color = StillColors.MutedWhite)
+        StillVerb(text = "edit", onClick = onEdit, bordered = true, color = StillColors.SoftWhite)
+        StillVerb(text = "export", onClick = onExport, bordered = true, color = StillColors.MutedWhite)
     }
 }

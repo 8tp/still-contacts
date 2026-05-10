@@ -36,6 +36,7 @@ import dev.chuds.stillcontacts.data.Contact
 import dev.chuds.stillcontacts.data.ContactDetail
 import dev.chuds.stillcontacts.data.TypeLabel
 import dev.chuds.stillcontacts.data.TypedValue
+import dev.chuds.stillcontacts.ui.components.StillVerb
 import dev.chuds.stillcontacts.ui.theme.StillColors
 import dev.chuds.stillcontacts.ui.theme.StillTypography
 import java.time.LocalDate
@@ -339,7 +340,6 @@ private fun TypedSection(
     )
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FooterBar(
     modifier: Modifier = Modifier,
@@ -348,46 +348,31 @@ private fun FooterBar(
     onDelete: (() -> Unit)?,
     onCancel: () -> Unit,
 ) {
-    val saveInteraction = remember { MutableInteractionSource() }
-    val deleteInteraction = remember { MutableInteractionSource() }
-    val cancelInteraction = remember { MutableInteractionSource() }
     Row(
         modifier = modifier.padding(horizontal = 24.dp, vertical = 22.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
+        StillVerb(
             text = "cancel",
-            style = StillTypography.Menu,
+            onClick = onCancel,
+            bordered = true,
             color = StillColors.MutedWhite,
-            modifier = Modifier.combinedClickable(
-                interactionSource = cancelInteraction,
-                indication = null,
-                onClick = onCancel,
-            ),
         )
         if (onDelete != null) {
-            Text(
+            StillVerb(
                 text = "delete",
-                style = StillTypography.Menu,
+                onClick = onDelete,
+                bordered = true,
                 color = StillColors.DimGray,
-                modifier = Modifier.combinedClickable(
-                    interactionSource = deleteInteraction,
-                    indication = null,
-                    onClick = onDelete,
-                ),
             )
         }
-        Text(
+        StillVerb(
             text = "save",
-            style = StillTypography.Menu,
+            onClick = onSave,
+            enabled = saveEnabled,
+            bordered = true,
             color = if (saveEnabled) StillColors.SoftWhite else StillColors.DimGray,
-            modifier = Modifier.combinedClickable(
-                enabled = saveEnabled,
-                interactionSource = saveInteraction,
-                indication = null,
-                onClick = onSave,
-            ),
         )
     }
 }
