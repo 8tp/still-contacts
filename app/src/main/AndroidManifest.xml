@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android manifest for Still Contacts.
+
+    Privacy posture (matches still-launcher / still-notes / still-cal):
+    - No INTERNET permission. Ever.
+    - No analytics, telemetry, or background services.
+    - No GET_ACCOUNTS — the in-app UI never surfaces an account picker; new contacts
+      are created in the device's default writable account (typically the local
+      "Phone-only" account on GrapheneOS / AOSP).
+    - No CALL_PHONE — tapping a number fires ACTION_DIAL so the user's chosen dialer
+      handles the actual call. Still Contacts never places calls itself.
+    - No READ/WRITE_CALL_LOG, no SEND_SMS, no nothing else.
+
+    The unusual constraint: a contacts app cannot store its data as flat files in
+    filesDir/ the way still-notes stores .md files. The system ContactsContract
+    provider is the source of truth so that the dialer, SMS apps, and other system
+    surfaces can resolve names against numbers. The pact is honored differently here:
+    bulk plaintext export of every contact as a single .vcf file via SAF is the
+    load-bearing promise.
+
+    Permissions (each disclosed honestly in the README):
+    - READ_CONTACTS:  Required to render the alphabetical list and the detail view.
+                      Asked at runtime on first launch.
+    - WRITE_CONTACTS: Required to create, edit, and delete contacts in the system
+                      provider. Asked at runtime the first time the user taps `new`,
+                      `save`, or `delete`.
+
+    Neither involves the network or any third-party SDK.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.WRITE_CONTACTS" />
+
+    <application
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="false"
+        android:icon="@drawable/ic_still_contacts_launcher"
+        android:roundIcon="@drawable/ic_still_contacts_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.StillContacts"
+        android:usesCleartextTraffic="false">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Lets other apps hand a single .vcf file to still-contacts via the system file picker. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/vcard" />
+                <data android:mimeType="text/x-vcard" />
+            </intent-filter>
+
+            <!-- Lets other apps ask still-contacts to pick a contact (e.g. the system "share to contact"
+                 flow, or another still-* app asking the user which contact to attach something to). -->
+            <intent-filter>
+                <action android:name="android.intent.action.PICK" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="vnd.android.cursor.dir/contact" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

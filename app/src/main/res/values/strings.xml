@@ -1,0 +1,4 @@
+<!-- App strings. Keep names short and quiet, like the launcher and notes. -->
+<resources>
+    <string name="app_name">Still Contacts</string>
+</resources>
