@@ -66,6 +66,7 @@ interface ContactsRepository {
     ): Flow<List<Contact>>
 
     suspend fun getDetail(lookupKey: String, rawContactId: Long? = null): ContactDetail?
+    suspend fun getAggregateDetail(lookupKey: String): ContactDetail?
     suspend fun create(detail: ContactDetail, account: AccountTarget): Long
     suspend fun update(rawContactId: Long, detail: ContactDetail)
     suspend fun delete(rawContactId: Long)
@@ -73,6 +74,7 @@ interface ContactsRepository {
     suspend fun deleteAllStillContactsRaws(account: AccountTarget): Int
     suspend fun listWritableAccounts(): List<AccountTarget.Named>
     suspend fun lookupRawContactId(lookupKey: String): Long?
+    suspend fun isStillContactRaw(rawContactId: Long): Boolean
     suspend fun loadAllForExport(): List<ContactDetail>
 }
 
@@ -322,6 +324,17 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
         )
     }
 
+    override suspend fun getAggregateDetail(lookupKey: String): ContactDetail? = withContext(Dispatchers.IO) {
+        val contactId = contactIdForLookup(lookupKey) ?: return@withContext null
+        val rawContactId = firstRawContactIdFor(contactId) ?: return@withContext null
+        readDetailRows(
+            lookupKey = lookupKey,
+            rawContactId = rawContactId,
+            dataSelection = aggregateContactDataSelection(contactId),
+            displayNameFallback = displayNameForContactId(contactId),
+        )
+    }
+
     private fun readDetailRows(
         lookupKey: String,
         rawContactId: Long,
@@ -466,14 +479,15 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
 
     override suspend fun update(rawContactId: Long, detail: ContactDetail) =
         withContext<Unit>(Dispatchers.IO) {
-            // Re-insert strategy (see file header). One applyBatch:
-            //   1. Delete every Data row for the rawContactId.
-            //   2. Insert the new Data rows from `detail`.
+            if (!isStillContactRawInternal(rawContactId)) return@withContext
+            // Re-insert Still-supported rows while preserving unsupported provider data
+            // such as photos, websites, nicknames, and custom mimetypes.
+            val replaceSelection = supportedDataReplaceSelection(rawContactId)
             val ops = ArrayList<ContentProviderOperation>()
             ops += ContentProviderOperation.newDelete(Data.CONTENT_URI)
                 .withSelection(
-                    "${Data.RAW_CONTACT_ID} = ?",
-                    arrayOf(rawContactId.toString()),
+                    replaceSelection.selection,
+                    replaceSelection.selectionArgs.toTypedArray(),
                 )
                 .build()
             appendDataInsertsForExistingRaw(ops, rawContactId, detail)
@@ -481,6 +495,7 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
         }
 
     override suspend fun delete(rawContactId: Long) = withContext<Unit>(Dispatchers.IO) {
+        if (!isStillContactRawInternal(rawContactId)) return@withContext
         // CALLER_IS_SYNCADAPTER=true → hard delete. Without it the provider keeps the row
         // around as a "deleted=1" tombstone for sync-engine reconciliation, which we do
         // not want because we are not a sync adapter.
@@ -564,6 +579,22 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
             val contactId = contactIdForLookup(lookupKey) ?: return@withContext null
             firstRawContactIdFor(contactId)
         }
+
+    override suspend fun isStillContactRaw(rawContactId: Long): Boolean =
+        withContext(Dispatchers.IO) { isStillContactRawInternal(rawContactId) }
+
+    private fun isStillContactRawInternal(rawContactId: Long): Boolean {
+        resolver.query(
+            RawContacts.CONTENT_URI,
+            arrayOf(RawContacts._ID),
+            "${RawContacts._ID} = ? AND ${RawContacts.SOURCE_ID} = ?",
+            arrayOf(rawContactId.toString(), STILL_CONTACTS_SOURCE_ID),
+            null,
+        )?.use { cursor ->
+            return cursor.moveToFirst()
+        }
+        return false
+    }
 
     override suspend fun loadAllForExport(): List<ContactDetail> = withContext(Dispatchers.IO) {
         val list = mutableListOf<ContactDetail>()

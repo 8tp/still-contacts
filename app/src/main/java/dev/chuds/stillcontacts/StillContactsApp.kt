@@ -204,6 +204,33 @@ fun StillContactsApp(
         val ts = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())
         exportBulkLauncher.launch("still-contacts-$ts.vcf")
     }
+    fun startAggregateExport(lookupKey: String, fallback: ContactDetail? = null) {
+        scope.launch {
+            val detail = repository.getAggregateDetail(lookupKey) ?: fallback ?: return@launch
+            startSingleExport(detail)
+        }
+    }
+    fun openOwnedEdit(lookupKey: String, rawContactId: Long) {
+        scope.launch {
+            if (!repository.isStillContactRaw(rawContactId)) {
+                Toast.makeText(activityContext, "view-only contact", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            if (!writeGranted) writePermissionLauncher.launch(Manifest.permission.WRITE_CONTACTS)
+            route = Route.Edit(lookupKey, rawContactId)
+        }
+    }
+    fun deleteOwnedRaw(rawContactId: Long) {
+        scope.launch {
+            if (!repository.isStillContactRaw(rawContactId)) {
+                Toast.makeText(activityContext, "view-only contact", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            if (!ensureWrite(writeGranted, writePermissionLauncher::launch)) return@launch
+            repository.delete(rawContactId)
+            route = Route.List
+        }
+    }
 
     BackHandler(enabled = route !is Route.List) { route = Route.List }
 
@@ -264,10 +291,9 @@ fun StillContactsApp(
                         detail = d,
                         onBack = { route = Route.List },
                         onEdit = {
-                            if (!writeGranted) writePermissionLauncher.launch(Manifest.permission.WRITE_CONTACTS)
-                            route = Route.Edit(current.lookupKey, current.rawContactId)
+                            openOwnedEdit(current.lookupKey, current.rawContactId)
                         },
-                        onExport = { startSingleExport(d) },
+                        onExport = { startAggregateExport(current.lookupKey, d) },
                     )
                 }
             }
@@ -385,23 +411,16 @@ fun StillContactsApp(
                 route = Route.Detail(c.lookupKey, c.rawContactId)
             },
             onEdit = {
-                if (!writeGranted) writePermissionLauncher.launch(Manifest.permission.WRITE_CONTACTS)
                 actionTarget = null
-                route = Route.Edit(c.lookupKey, c.rawContactId)
+                openOwnedEdit(c.lookupKey, c.rawContactId)
             },
             onExport = {
                 actionTarget = null
-                scope.launch {
-                    val d = repository.getDetail(c.lookupKey, c.rawContactId) ?: return@launch
-                    startSingleExport(d)
-                }
+                startAggregateExport(c.lookupKey)
             },
             onDelete = {
                 actionTarget = null
-                scope.launch {
-                    if (!ensureWrite(writeGranted, writePermissionLauncher::launch)) return@launch
-                    repository.delete(c.rawContactId)
-                }
+                deleteOwnedRaw(c.rawContactId)
             },
             onDismiss = { actionTarget = null },
         )
