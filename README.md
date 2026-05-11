@@ -4,7 +4,7 @@
 
 #### A local-only contacts app that never asks you to sign in.
 
-part of the [still](../STILL.md) family. the pact governs every line of code in this repo.
+part of the [still](STILL.md) family. the pact governs every line of code in this repo.
 
 <br>
 
