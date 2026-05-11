@@ -5,9 +5,9 @@
     Privacy posture (matches still-launcher / still-notes / still-cal):
     - No INTERNET permission. Ever.
     - No analytics, telemetry, or background services.
-    - No GET_ACCOUNTS — the in-app UI never surfaces an account picker; new contacts
-      are created in the device's default writable account (typically the local
-      "Phone-only" account on GrapheneOS / AOSP).
+    - No GET_ACCOUNTS — the UI has no per-contact account picker and no account
+      creation flow. Settings can choose from provider-visible writable accounts;
+      new contacts are created in that configured default.
     - No CALL_PHONE — tapping a number fires ACTION_DIAL so the user's chosen dialer
       handles the actual call. Still Contacts never places calls itself.
     - No READ/WRITE_CALL_LOG, no SEND_SMS, no nothing else.
