@@ -19,4 +19,24 @@ class ContactDataSelectionTest {
         assertEquals("${Data.CONTACT_ID} = ?", selection.selection)
         assertEquals(listOf("99"), selection.selectionArgs)
     }
+
+    @Test fun resolvesDisplayNameFromProviderFallbackWhenDataRowsHaveNoName() {
+        assertEquals(
+            "Phone Only",
+            resolveContactDisplayName(
+                dataDisplayName = "",
+                fallbackDisplayName = "Phone Only",
+            ),
+        )
+    }
+
+    @Test fun keepsDataRowDisplayNameBeforeProviderFallback() {
+        assertEquals(
+            "Structured Name",
+            resolveContactDisplayName(
+                dataDisplayName = "Structured Name",
+                fallbackDisplayName = "Provider Name",
+            ),
+        )
+    }
 }

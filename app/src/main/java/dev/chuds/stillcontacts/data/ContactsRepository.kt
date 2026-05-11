@@ -306,15 +306,19 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
         rawContactId: Long?,
     ): ContactDetail? = withContext(Dispatchers.IO) {
         val contactId = contactIdForLookup(lookupKey) ?: return@withContext null
-        val selectedRawContactId = rawContactId
-            ?.takeIf { rawContactBelongsToContact(it, contactId) }
-            ?: firstRawContactIdFor(contactId)
-            ?: return@withContext null
+        val selectedRawContactId = if (rawContactId != null) {
+            rawContactId
+                .takeIf { rawContactBelongsToContact(it, contactId) }
+                ?: return@withContext null
+        } else {
+            firstRawContactIdFor(contactId) ?: return@withContext null
+        }
 
         readDetailRows(
             lookupKey = lookupKey,
             rawContactId = selectedRawContactId,
             dataSelection = rawContactDataSelection(selectedRawContactId),
+            displayNameFallback = displayNameForContactId(contactId),
         )
     }
 
@@ -322,6 +326,7 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
         lookupKey: String,
         rawContactId: Long,
         dataSelection: ContactDataSelection,
+        displayNameFallback: String? = null,
     ): ContactDetail {
         var displayName = ""
         var given: String? = null
@@ -389,16 +394,21 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
             }
         }
 
+        val resolvedDisplayName = resolveContactDisplayName(
+            dataDisplayName = displayName,
+            fallbackDisplayName = displayNameFallback,
+        )
+
         return ContactDetail(
             contact = Contact(
                 rawContactId = rawContactId,
                 lookupKey = lookupKey,
-                displayName = displayName,
+                displayName = resolvedDisplayName,
                 familyName = family,
                 givenName = given,
                 primaryPhone = phones.firstOrNull()?.value,
                 primaryEmail = emails.firstOrNull()?.value,
-                sectionLetter = sectionLetterFor(displayName),
+                sectionLetter = sectionLetterFor(resolvedDisplayName),
             ),
             phones = phones,
             emails = emails,
@@ -420,6 +430,19 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
             return cursor.moveToFirst()
         }
         return false
+    }
+
+    private fun displayNameForContactId(contactId: Long): String? {
+        resolver.query(
+            Contacts.CONTENT_URI,
+            arrayOf(Contacts.DISPLAY_NAME_PRIMARY),
+            "${Contacts._ID} = ?",
+            arrayOf(contactId.toString()),
+            null,
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) return cursor.getString(0)?.takeIf { it.isNotBlank() }
+        }
+        return null
     }
 
     private fun parseBirthday(raw: String?): LocalDate? {
@@ -546,7 +569,7 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
         val list = mutableListOf<ContactDetail>()
         resolver.query(
             Contacts.CONTENT_URI,
-            arrayOf(Contacts._ID, Contacts.LOOKUP_KEY),
+            arrayOf(Contacts._ID, Contacts.LOOKUP_KEY, Contacts.DISPLAY_NAME_PRIMARY),
             null,
             null,
             null,
@@ -554,11 +577,13 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
             while (cursor.moveToNext()) {
                 val contactId = cursor.getLong(0)
                 val key = cursor.getString(1) ?: continue
+                val displayNameFallback = cursor.getString(2)
                 val rawContactId = firstRawContactIdFor(contactId) ?: continue
                 list += readDetailRows(
                     lookupKey = key,
                     rawContactId = rawContactId,
                     dataSelection = aggregateContactDataSelection(contactId),
+                    displayNameFallback = displayNameFallback,
                 )
             }
         }
@@ -693,3 +718,8 @@ private fun android.database.Cursor.getIntSafe(column: String): Int {
     if (isNull(idx)) return 0
     return getInt(idx)
 }
+
+internal fun resolveContactDisplayName(
+    dataDisplayName: String,
+    fallbackDisplayName: String?,
+): String = dataDisplayName.ifBlank { fallbackDisplayName.orEmpty() }
