@@ -296,8 +296,22 @@ fun StillContactsApp(
                 var detailState by remember(current.lookupKey, current.rawContactId) {
                     mutableStateOf<ContactDetail?>(null)
                 }
+                var loaded by remember(current.lookupKey, current.rawContactId) {
+                    mutableStateOf(false)
+                }
                 LaunchedEffect(current.lookupKey, current.rawContactId, contacts) {
                     detailState = repository.getAggregateDetail(current.lookupKey)
+                    loaded = true
+                }
+                LaunchedEffect(loaded, detailState) {
+                    if (loaded && detailState == null) {
+                        Toast.makeText(
+                            activityContext,
+                            "contact no longer available",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                        route = Route.List
+                    }
                 }
                 detailState?.let { d ->
                     ContactDetailScreen(
@@ -314,8 +328,22 @@ fun StillContactsApp(
                 var detailState by remember(current.lookupKey, current.rawContactId) {
                     mutableStateOf<ContactDetail?>(null)
                 }
+                var loaded by remember(current.lookupKey, current.rawContactId) {
+                    mutableStateOf(false)
+                }
                 LaunchedEffect(current.lookupKey, current.rawContactId) {
                     detailState = repository.getDetail(current.lookupKey, current.rawContactId)
+                    loaded = true
+                }
+                LaunchedEffect(loaded, detailState) {
+                    if (loaded && detailState == null) {
+                        Toast.makeText(
+                            activityContext,
+                            "contact no longer available",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                        route = Route.List
+                    }
                 }
                 detailState?.let { d ->
                     ContactEditScreen(
