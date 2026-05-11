@@ -73,7 +73,6 @@ interface ContactsRepository {
     suspend fun importBatch(details: List<ContactDetail>, account: AccountTarget): Int
     suspend fun deleteAllStillContactsRaws(): Int
     suspend fun listWritableAccounts(): List<AccountTarget.Named>
-    suspend fun lookupRawContactId(lookupKey: String): Long?
     suspend fun isStillContactRaw(rawContactId: Long): Boolean
     suspend fun loadAllForExport(): List<ContactDetail>
 }
@@ -585,12 +584,6 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
                 }
             }
             seen.values.toList()
-        }
-
-    override suspend fun lookupRawContactId(lookupKey: String): Long? =
-        withContext(Dispatchers.IO) {
-            val contactId = contactIdForLookup(lookupKey) ?: return@withContext null
-            preferredRawContactIdFor(contactId)
         }
 
     override suspend fun isStillContactRaw(rawContactId: Long): Boolean =
