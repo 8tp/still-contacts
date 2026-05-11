@@ -1,0 +1,78 @@
+package dev.chuds.stillcontacts.data
+
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+class StillContactsSourceFilterTest {
+
+    @Test fun filtersPhoneOnlyRowsByStillContactsSourceId() {
+        val rows = listOf(
+            RawContactSourceRow(
+                rawContactId = 1L,
+                sourceId = STILL_CONTACTS_SOURCE_ID,
+                accountName = null,
+                accountType = null,
+            ),
+            RawContactSourceRow(
+                rawContactId = 2L,
+                sourceId = "other-app",
+                accountName = null,
+                accountType = null,
+            ),
+            RawContactSourceRow(
+                rawContactId = 3L,
+                sourceId = STILL_CONTACTS_SOURCE_ID,
+                accountName = "me@example.com",
+                accountType = "com.example",
+            ),
+            RawContactSourceRow(
+                rawContactId = 4L,
+                sourceId = null,
+                accountName = null,
+                accountType = null,
+            ),
+        )
+
+        assertEquals(
+            listOf(1L),
+            stillContactsRawContactIds(rows, AccountTarget.PhoneOnly),
+        )
+    }
+
+    @Test fun filtersNamedAccountRowsByStillContactsSourceIdAndAccount() {
+        val rows = listOf(
+            RawContactSourceRow(
+                rawContactId = 10L,
+                sourceId = STILL_CONTACTS_SOURCE_ID,
+                accountName = "me@example.com",
+                accountType = "com.example",
+            ),
+            RawContactSourceRow(
+                rawContactId = 11L,
+                sourceId = STILL_CONTACTS_SOURCE_ID,
+                accountName = "other@example.com",
+                accountType = "com.example",
+            ),
+            RawContactSourceRow(
+                rawContactId = 12L,
+                sourceId = STILL_CONTACTS_SOURCE_ID,
+                accountName = "me@example.com",
+                accountType = "other.type",
+            ),
+            RawContactSourceRow(
+                rawContactId = 13L,
+                sourceId = "still-notes",
+                accountName = "me@example.com",
+                accountType = "com.example",
+            ),
+        )
+
+        assertEquals(
+            listOf(10L),
+            stillContactsRawContactIds(
+                rows,
+                AccountTarget.Named(name = "me@example.com", type = "com.example"),
+            ),
+        )
+    }
+}

@@ -35,6 +35,63 @@ class VCardRoundTripTest {
         assertEqualsModuloProviderFields(original, parsed)
     }
 
+    @Test fun parse_foldedLines() {
+        val parsed = VCard.parseAll(
+            "BEGIN:VCARD\n" +
+                "VERSION:3.0\n" +
+                "FN:Folded Person\n" +
+                "N:Person;Folded;;;\n" +
+                "NOTE:This note crosses \n" +
+                " a folded physical line.\n" +
+                "TEL;TYPE=CELL:555-0100\n" +
+                "END:VCARD\n",
+        )
+
+        assertEquals(1, parsed.size)
+        val detail = parsed.first()
+        assertEquals("Folded Person", detail.contact.displayName)
+        assertEquals("This note crosses a folded physical line.", detail.notes)
+        assertEquals(listOf(TypedValue(TypeLabel.Mobile, "555-0100")), detail.phones)
+    }
+
+    @Test fun parse_quotedPrintableFixture() {
+        val parsed = VCard.parseAll(
+            """
+            BEGIN:VCARD
+            VERSION:3.0
+            FN;CHARSET=UTF-8;ENCODING=QUOTED-PRINTABLE:Jos=C3=A9 Curie
+            N;CHARSET=UTF-8;ENCODING=QUOTED-PRINTABLE:Curie;Jos=C3=A9;;;
+            NOTE;ENCODING=QUOTED-PRINTABLE;CHARSET=UTF-8:line=20one=0Aline=20two
+            EMAIL;TYPE=HOME:jose@example.org
+            END:VCARD
+            """.trimIndent(),
+        )
+
+        assertEquals(1, parsed.size)
+        val detail = parsed.first()
+        assertEquals("José Curie", detail.contact.displayName)
+        assertEquals("José", detail.contact.givenName)
+        assertEquals("Curie", detail.contact.familyName)
+        assertEquals("line one\nline two", detail.notes)
+        assertEquals(listOf(TypedValue(TypeLabel.Home, "jose@example.org")), detail.emails)
+    }
+
+    @Test fun parse_missingTrailingNewline() {
+        val parsed = VCard.parseAll(
+            "BEGIN:VCARD\n" +
+                "VERSION:3.0\n" +
+                "FN:No Newline\n" +
+                "N:Newline;No;;;\n" +
+                "EMAIL;TYPE=WORK:no-newline@example.org\n" +
+                "END:VCARD",
+        )
+
+        assertEquals(1, parsed.size)
+        val detail = parsed.first()
+        assertEquals("No Newline", detail.contact.displayName)
+        assertEquals(listOf(TypedValue(TypeLabel.Work, "no-newline@example.org")), detail.emails)
+    }
+
     private fun roundTrip(detail: ContactDetail): ContactDetail {
         val text = VCard.write(detail)
         val parsed = VCard.parseAll(text)
