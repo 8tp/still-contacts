@@ -71,7 +71,7 @@ interface ContactsRepository {
     suspend fun update(rawContactId: Long, detail: ContactDetail)
     suspend fun delete(rawContactId: Long)
     suspend fun importBatch(details: List<ContactDetail>, account: AccountTarget): Int
-    suspend fun deleteAllStillContactsRaws(account: AccountTarget): Int
+    suspend fun deleteAllStillContactsRaws(): Int
     suspend fun listWritableAccounts(): List<AccountTarget.Named>
     suspend fun lookupRawContactId(lookupKey: String): Long?
     suspend fun isStillContactRaw(rawContactId: Long): Boolean
@@ -542,9 +542,9 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
         inserted
     }
 
-    override suspend fun deleteAllStillContactsRaws(account: AccountTarget): Int =
+    override suspend fun deleteAllStillContactsRaws(): Int =
         withContext(Dispatchers.IO) {
-            val deleteSelection = stillContactsDeleteSelection(account)
+            val deleteSelection = stillContactsDeleteSelection()
             val uri = RawContacts.CONTENT_URI.buildUpon()
                 .appendQueryParameter(ContactsContract.CALLER_IS_SYNCADAPTER, "true")
                 .build()

@@ -115,30 +115,13 @@ class StillContactsSourceFilterTest {
         )
     }
 
-    @Test fun buildsPhoneOnlyDeleteSelectionForStillContactsSourceId() {
-        val selection = stillContactsDeleteSelection(AccountTarget.PhoneOnly)
+    @Test fun buildsDeleteSelectionForEveryStillContactsSourceId() {
+        val selection = stillContactsDeleteSelection()
 
         assertEquals(
-            "${RawContacts.SOURCE_ID} = ? AND " +
-                "${RawContacts.ACCOUNT_NAME} IS NULL AND ${RawContacts.ACCOUNT_TYPE} IS NULL",
+            "${RawContacts.SOURCE_ID} = ?",
             selection.selection,
         )
         assertEquals(listOf(STILL_CONTACTS_SOURCE_ID), selection.selectionArgs)
-    }
-
-    @Test fun buildsNamedAccountDeleteSelectionForStillContactsSourceIdAndAccount() {
-        val selection = stillContactsDeleteSelection(
-            AccountTarget.Named(name = "me@example.com", type = "com.example"),
-        )
-
-        assertEquals(
-            "${RawContacts.SOURCE_ID} = ? AND " +
-                "${RawContacts.ACCOUNT_NAME} = ? AND ${RawContacts.ACCOUNT_TYPE} = ?",
-            selection.selection,
-        )
-        assertEquals(
-            listOf(STILL_CONTACTS_SOURCE_ID, "me@example.com", "com.example"),
-            selection.selectionArgs,
-        )
     }
 }

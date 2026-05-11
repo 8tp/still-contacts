@@ -389,7 +389,7 @@ fun StillContactsApp(
                     onDeleteAll = {
                         scope.launch {
                             if (!ensureWrite(writeGranted, writePermissionLauncher::launch)) return@launch
-                            val n = repository.deleteAllStillContactsRaws(settings.accountTarget)
+                            val n = repository.deleteAllStillContactsRaws()
                             Toast.makeText(
                                 activityContext,
                                 "deleted $n still-contacts entries",

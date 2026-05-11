@@ -27,19 +27,11 @@ internal fun preferredRawContactId(rows: Iterable<RawContactSourceRow>): Long? {
         ?: ordered.firstOrNull()?.rawContactId
 }
 
-internal fun stillContactsDeleteSelection(account: AccountTarget): RawContactsDeleteSelection =
-    when (account) {
-        AccountTarget.PhoneOnly -> RawContactsDeleteSelection(
-            selection = "${RawContacts.SOURCE_ID} = ? AND " +
-                "${RawContacts.ACCOUNT_NAME} IS NULL AND ${RawContacts.ACCOUNT_TYPE} IS NULL",
-            selectionArgs = listOf(STILL_CONTACTS_SOURCE_ID),
-        )
-        is AccountTarget.Named -> RawContactsDeleteSelection(
-            selection = "${RawContacts.SOURCE_ID} = ? AND " +
-                "${RawContacts.ACCOUNT_NAME} = ? AND ${RawContacts.ACCOUNT_TYPE} = ?",
-            selectionArgs = listOf(STILL_CONTACTS_SOURCE_ID, account.name, account.type),
-        )
-    }
+internal fun stillContactsDeleteSelection(): RawContactsDeleteSelection =
+    RawContactsDeleteSelection(
+        selection = "${RawContacts.SOURCE_ID} = ?",
+        selectionArgs = listOf(STILL_CONTACTS_SOURCE_ID),
+    )
 
 private fun RawContactSourceRow.isStillContactsRaw(account: AccountTarget): Boolean {
     if (sourceId != STILL_CONTACTS_SOURCE_ID) return false
