@@ -97,6 +97,7 @@ fun StillContactsApp(
             ) == PackageManager.PERMISSION_GRANTED,
         )
     }
+    var pendingImportUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
 
     val readPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -107,7 +108,10 @@ fun StillContactsApp(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
         writeGranted = granted
-        if (!granted) Toast.makeText(activityContext, "write access denied", Toast.LENGTH_SHORT).show()
+        if (!granted) {
+            pendingImportUris = emptyList()
+            Toast.makeText(activityContext, "write access denied", Toast.LENGTH_SHORT).show()
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -133,7 +137,6 @@ fun StillContactsApp(
     var actionTarget by remember { mutableStateOf<Contact?>(null) }
     var pendingExport by remember { mutableStateOf<ContactDetail?>(null) }
     var pendingBulkExport by remember { mutableStateOf(false) }
-    var pendingImportUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var writableAccounts by remember { mutableStateOf<List<AccountTarget.Named>>(emptyList()) }
 
     LaunchedEffect(readGranted, writeGranted) {

@@ -311,6 +311,18 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
             ?: firstRawContactIdFor(contactId)
             ?: return@withContext null
 
+        readDetailRows(
+            lookupKey = lookupKey,
+            rawContactId = selectedRawContactId,
+            dataSelection = rawContactDataSelection(selectedRawContactId),
+        )
+    }
+
+    private fun readDetailRows(
+        lookupKey: String,
+        rawContactId: Long,
+        dataSelection: ContactDataSelection,
+    ): ContactDetail {
         var displayName = ""
         var given: String? = null
         var family: String? = null
@@ -321,7 +333,6 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
         var notes: String? = null
         var birthday: LocalDate? = null
 
-        val dataSelection = rawContactDataSelection(selectedRawContactId)
         resolver.query(
             Data.CONTENT_URI,
             null,
@@ -378,9 +389,9 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
             }
         }
 
-        ContactDetail(
+        return ContactDetail(
             contact = Contact(
-                rawContactId = selectedRawContactId,
+                rawContactId = rawContactId,
                 lookupKey = lookupKey,
                 displayName = displayName,
                 familyName = family,
@@ -535,14 +546,20 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
         val list = mutableListOf<ContactDetail>()
         resolver.query(
             Contacts.CONTENT_URI,
-            arrayOf(Contacts.LOOKUP_KEY),
+            arrayOf(Contacts._ID, Contacts.LOOKUP_KEY),
             null,
             null,
             null,
         )?.use { cursor ->
             while (cursor.moveToNext()) {
-                val key = cursor.getString(0) ?: continue
-                getDetail(key)?.let { list += it }
+                val contactId = cursor.getLong(0)
+                val key = cursor.getString(1) ?: continue
+                val rawContactId = firstRawContactIdFor(contactId) ?: continue
+                list += readDetailRows(
+                    lookupKey = key,
+                    rawContactId = rawContactId,
+                    dataSelection = aggregateContactDataSelection(contactId),
+                )
             }
         }
         list

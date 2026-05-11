@@ -12,4 +12,11 @@ class ContactDataSelectionTest {
         assertEquals("${Data.RAW_CONTACT_ID} = ?", selection.selection)
         assertEquals(listOf("42"), selection.selectionArgs)
     }
+
+    @Test fun buildsAggregateContactScopedDataSelection() {
+        val selection = aggregateContactDataSelection(contactId = 99L)
+
+        assertEquals("${Data.CONTACT_ID} = ?", selection.selection)
+        assertEquals(listOf("99"), selection.selectionArgs)
+    }
 }
