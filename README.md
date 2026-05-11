@@ -4,6 +4,8 @@
 
 #### A local-only contacts app that never asks you to sign in.
 
+part of the [still](../STILL.md) family. the pact governs every line of code in this repo.
+
 <br>
 
 <img src="docs/screenshots/list.png" width="180" alt="Contacts list — alphabetical with letter rail and sticky section headers">&nbsp;<img src="docs/screenshots/detail.png" width="180" alt="Contact detail — typed rows for phones, emails, addresses">&nbsp;<img src="docs/screenshots/edit.png" width="180" alt="Contact editor — single scrollable form, lowercase verbs, tap-to-cycle type labels">&nbsp;<img src="docs/screenshots/settings.png" width="180" alt="Settings — font preset, name display, sort, default account, import/export">
