@@ -76,6 +76,23 @@ class VCardRoundTripTest {
         assertEquals(listOf(TypedValue(TypeLabel.Home, "jose@example.org")), detail.emails)
     }
 
+    @Test fun parse_quotedPrintableSoftBreakFixture() {
+        val parsed = VCard.parseAll(
+            "BEGIN:VCARD\r\n" +
+                "VERSION:3.0\r\n" +
+                "FN:Soft Break\r\n" +
+                "N:Break;Soft;;;\r\n" +
+                "NOTE;ENCODING=QUOTED-PRINTABLE;CHARSET=UTF-8:line=20one=20=\r\n" +
+                "line=20two=0AJos=C3=A9\r\n" +
+                "END:VCARD\r\n",
+        )
+
+        assertEquals(1, parsed.size)
+        val detail = parsed.first()
+        assertEquals("Soft Break", detail.contact.displayName)
+        assertEquals("line one line two\nJosé", detail.notes)
+    }
+
     @Test fun parse_missingTrailingNewline() {
         val parsed = VCard.parseAll(
             "BEGIN:VCARD\n" +

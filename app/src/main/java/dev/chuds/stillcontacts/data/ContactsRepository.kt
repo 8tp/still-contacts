@@ -458,24 +458,15 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
 
     override suspend fun deleteAllStillContactsRaws(account: AccountTarget): Int =
         withContext(Dispatchers.IO) {
-            val (accountName, accountType) = when (account) {
-                is AccountTarget.PhoneOnly -> null to null
-                is AccountTarget.Named -> account.name to account.type
-            }
-            val selection = buildString {
-                append("${RawContacts.SOURCE_ID} = ?")
-                if (accountName != null) append(" AND ${RawContacts.ACCOUNT_NAME} = ? AND ${RawContacts.ACCOUNT_TYPE} = ?")
-                else append(" AND ${RawContacts.ACCOUNT_NAME} IS NULL AND ${RawContacts.ACCOUNT_TYPE} IS NULL")
-            }
-            val args = if (accountName != null) {
-                arrayOf(STILL_CONTACTS_SOURCE_ID, accountName, accountType)
-            } else {
-                arrayOf(STILL_CONTACTS_SOURCE_ID)
-            }
+            val deleteSelection = stillContactsDeleteSelection(account)
             val uri = RawContacts.CONTENT_URI.buildUpon()
                 .appendQueryParameter(ContactsContract.CALLER_IS_SYNCADAPTER, "true")
                 .build()
-            resolver.delete(uri, selection, args)
+            resolver.delete(
+                uri,
+                deleteSelection.selection,
+                deleteSelection.selectionArgs.toTypedArray(),
+            )
         }
 
     override suspend fun listWritableAccounts(): List<AccountTarget.Named> =
@@ -661,4 +652,3 @@ private fun android.database.Cursor.getIntSafe(column: String): Int {
     if (isNull(idx)) return 0
     return getInt(idx)
 }
-

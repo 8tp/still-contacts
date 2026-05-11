@@ -1,5 +1,6 @@
 package dev.chuds.stillcontacts.data
 
+import android.provider.ContactsContract.RawContacts
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -73,6 +74,33 @@ class StillContactsSourceFilterTest {
                 rows,
                 AccountTarget.Named(name = "me@example.com", type = "com.example"),
             ),
+        )
+    }
+
+    @Test fun buildsPhoneOnlyDeleteSelectionForStillContactsSourceId() {
+        val selection = stillContactsDeleteSelection(AccountTarget.PhoneOnly)
+
+        assertEquals(
+            "${RawContacts.SOURCE_ID} = ? AND " +
+                "${RawContacts.ACCOUNT_NAME} IS NULL AND ${RawContacts.ACCOUNT_TYPE} IS NULL",
+            selection.selection,
+        )
+        assertEquals(listOf(STILL_CONTACTS_SOURCE_ID), selection.selectionArgs)
+    }
+
+    @Test fun buildsNamedAccountDeleteSelectionForStillContactsSourceIdAndAccount() {
+        val selection = stillContactsDeleteSelection(
+            AccountTarget.Named(name = "me@example.com", type = "com.example"),
+        )
+
+        assertEquals(
+            "${RawContacts.SOURCE_ID} = ? AND " +
+                "${RawContacts.ACCOUNT_NAME} = ? AND ${RawContacts.ACCOUNT_TYPE} = ?",
+            selection.selection,
+        )
+        assertEquals(
+            listOf(STILL_CONTACTS_SOURCE_ID, "me@example.com", "com.example"),
+            selection.selectionArgs,
         )
     }
 }
