@@ -65,7 +65,7 @@ interface ContactsRepository {
         query: String? = null,
     ): Flow<List<Contact>>
 
-    suspend fun getDetail(lookupKey: String): ContactDetail?
+    suspend fun getDetail(lookupKey: String, rawContactId: Long? = null): ContactDetail?
     suspend fun create(detail: ContactDetail, account: AccountTarget): Long
     suspend fun update(rawContactId: Long, detail: ContactDetail)
     suspend fun delete(rawContactId: Long)
@@ -301,22 +301,19 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
     private fun normalizePhoneForSearch(phone: String): String =
         phone.filter { it.isDigit() }
 
-    override suspend fun getDetail(lookupKey: String): ContactDetail? = withContext(Dispatchers.IO) {
+    override suspend fun getDetail(
+        lookupKey: String,
+        rawContactId: Long?,
+    ): ContactDetail? = withContext(Dispatchers.IO) {
         val contactId = contactIdForLookup(lookupKey) ?: return@withContext null
-        val rawContactId = firstRawContactIdFor(contactId) ?: return@withContext null
-        val (given, family) = givenFamilyFor(contactId)
+        val selectedRawContactId = rawContactId
+            ?.takeIf { rawContactBelongsToContact(it, contactId) }
+            ?: firstRawContactIdFor(contactId)
+            ?: return@withContext null
 
         var displayName = ""
-        resolver.query(
-            Contacts.CONTENT_URI,
-            arrayOf(Contacts.DISPLAY_NAME_PRIMARY),
-            "${Contacts._ID} = ?",
-            arrayOf(contactId.toString()),
-            null,
-        )?.use { cursor ->
-            if (cursor.moveToFirst()) displayName = cursor.getString(0) ?: ""
-        }
-
+        var given: String? = null
+        var family: String? = null
         val phones = mutableListOf<TypedValue>()
         val emails = mutableListOf<TypedValue>()
         val addresses = mutableListOf<TypedValue>()
@@ -324,16 +321,30 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
         var notes: String? = null
         var birthday: LocalDate? = null
 
+        val dataSelection = rawContactDataSelection(selectedRawContactId)
         resolver.query(
             Data.CONTENT_URI,
             null,
-            "${Data.CONTACT_ID} = ?",
-            arrayOf(contactId.toString()),
+            dataSelection.selection,
+            dataSelection.selectionArgs.toTypedArray(),
             null,
         )?.use { cursor ->
             val mimeIdx = cursor.getColumnIndexOrThrow(Data.MIMETYPE)
             while (cursor.moveToNext()) {
                 when (cursor.getString(mimeIdx)) {
+                    CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE -> {
+                        val rowGiven = cursor.getStringSafe(CommonDataKinds.StructuredName.GIVEN_NAME)
+                        val rowFamily = cursor.getStringSafe(CommonDataKinds.StructuredName.FAMILY_NAME)
+                        if (given.isNullOrBlank()) given = rowGiven
+                        if (family.isNullOrBlank()) family = rowFamily
+                        if (displayName.isBlank()) {
+                            displayName = cursor.getStringSafe(CommonDataKinds.StructuredName.DISPLAY_NAME)
+                                ?.takeIf { it.isNotBlank() }
+                                ?: listOf(rowGiven, rowFamily)
+                                    .filter { !it.isNullOrBlank() }
+                                    .joinToString(" ")
+                        }
+                    }
                     CommonDataKinds.Phone.CONTENT_ITEM_TYPE -> {
                         val number = cursor.getStringSafe(CommonDataKinds.Phone.NUMBER) ?: continue
                         val type = cursor.getIntSafe(CommonDataKinds.Phone.TYPE)
@@ -369,7 +380,7 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
 
         ContactDetail(
             contact = Contact(
-                rawContactId = rawContactId,
+                rawContactId = selectedRawContactId,
                 lookupKey = lookupKey,
                 displayName = displayName,
                 familyName = family,
@@ -385,6 +396,19 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
             notes = notes,
             birthday = birthday,
         )
+    }
+
+    private fun rawContactBelongsToContact(rawContactId: Long, contactId: Long): Boolean {
+        resolver.query(
+            RawContacts.CONTENT_URI,
+            arrayOf(RawContacts._ID),
+            "${RawContacts._ID} = ? AND ${RawContacts.CONTACT_ID} = ?",
+            arrayOf(rawContactId.toString(), contactId.toString()),
+            null,
+        )?.use { cursor ->
+            return cursor.moveToFirst()
+        }
+        return false
     }
 
     private fun parseBirthday(raw: String?): LocalDate? {
