@@ -65,14 +65,16 @@ interface ContactsRepository {
         query: String? = null,
     ): Flow<List<Contact>>
 
-    suspend fun getDetail(lookupKey: String): ContactDetail?
+    suspend fun getDetail(lookupKey: String, rawContactId: Long? = null): ContactDetail?
+    suspend fun getAggregateDetail(lookupKey: String): ContactDetail?
     suspend fun create(detail: ContactDetail, account: AccountTarget): Long
     suspend fun update(rawContactId: Long, detail: ContactDetail)
     suspend fun delete(rawContactId: Long)
     suspend fun importBatch(details: List<ContactDetail>, account: AccountTarget): Int
-    suspend fun deleteAllStillContactsRaws(account: AccountTarget): Int
+    suspend fun deleteAllStillContactsRaws(): Int
     suspend fun listWritableAccounts(): List<AccountTarget.Named>
     suspend fun lookupRawContactId(lookupKey: String): Long?
+    suspend fun isStillContactRaw(rawContactId: Long): Boolean
     suspend fun loadAllForExport(): List<ContactDetail>
 }
 
@@ -170,7 +172,7 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
 
                 // primary phone / email — one extra small lookup. For 500-row lists this
                 // is fine; if it ever isn't, this is the spot to cache.
-                val rawContactId = firstRawContactIdFor(contactId) ?: continue
+                val rawContactId = preferredRawContactIdFor(contactId) ?: continue
                 val phone = primaryPhoneFor(contactId)
                 val email = if (phone == null) primaryEmailFor(contactId) else null
                 val (given, family) = givenFamilyFor(contactId)
@@ -203,17 +205,30 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
         return if (first.isLetter()) first.uppercaseChar() else '#'
     }
 
-    private fun firstRawContactIdFor(contactId: Long): Long? {
+    private fun preferredRawContactIdFor(contactId: Long): Long? {
+        val rows = mutableListOf<RawContactSourceRow>()
         resolver.query(
             RawContacts.CONTENT_URI,
-            arrayOf(RawContacts._ID),
+            arrayOf(
+                RawContacts._ID,
+                RawContacts.SOURCE_ID,
+                RawContacts.ACCOUNT_NAME,
+                RawContacts.ACCOUNT_TYPE,
+            ),
             "${RawContacts.CONTACT_ID} = ?",
             arrayOf(contactId.toString()),
             "${RawContacts._ID} ASC",
         )?.use { cursor ->
-            if (cursor.moveToFirst()) return cursor.getLong(0)
+            while (cursor.moveToNext()) {
+                rows += RawContactSourceRow(
+                    rawContactId = cursor.getLong(0),
+                    sourceId = cursor.getString(1),
+                    accountName = cursor.getString(2),
+                    accountType = cursor.getString(3),
+                )
+            }
         }
-        return null
+        return preferredRawContactId(rows)
     }
 
     private fun primaryPhoneFor(contactId: Long): String? {
@@ -301,22 +316,47 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
     private fun normalizePhoneForSearch(phone: String): String =
         phone.filter { it.isDigit() }
 
-    override suspend fun getDetail(lookupKey: String): ContactDetail? = withContext(Dispatchers.IO) {
+    override suspend fun getDetail(
+        lookupKey: String,
+        rawContactId: Long?,
+    ): ContactDetail? = withContext(Dispatchers.IO) {
         val contactId = contactIdForLookup(lookupKey) ?: return@withContext null
-        val rawContactId = firstRawContactIdFor(contactId) ?: return@withContext null
-        val (given, family) = givenFamilyFor(contactId)
-
-        var displayName = ""
-        resolver.query(
-            Contacts.CONTENT_URI,
-            arrayOf(Contacts.DISPLAY_NAME_PRIMARY),
-            "${Contacts._ID} = ?",
-            arrayOf(contactId.toString()),
-            null,
-        )?.use { cursor ->
-            if (cursor.moveToFirst()) displayName = cursor.getString(0) ?: ""
+        val selectedRawContactId = if (rawContactId != null) {
+            rawContactId
+                .takeIf { rawContactBelongsToContact(it, contactId) }
+                ?: return@withContext null
+        } else {
+            preferredRawContactIdFor(contactId) ?: return@withContext null
         }
 
+        readDetailRows(
+            lookupKey = lookupKey,
+            rawContactId = selectedRawContactId,
+            dataSelection = rawContactDataSelection(selectedRawContactId),
+            displayNameFallback = displayNameForContactId(contactId),
+        )
+    }
+
+    override suspend fun getAggregateDetail(lookupKey: String): ContactDetail? = withContext(Dispatchers.IO) {
+        val contactId = contactIdForLookup(lookupKey) ?: return@withContext null
+        val rawContactId = preferredRawContactIdFor(contactId) ?: return@withContext null
+        readDetailRows(
+            lookupKey = lookupKey,
+            rawContactId = rawContactId,
+            dataSelection = aggregateContactDataSelection(contactId),
+            displayNameFallback = displayNameForContactId(contactId),
+        )
+    }
+
+    private fun readDetailRows(
+        lookupKey: String,
+        rawContactId: Long,
+        dataSelection: ContactDataSelection,
+        displayNameFallback: String? = null,
+    ): ContactDetail {
+        var displayName = ""
+        var given: String? = null
+        var family: String? = null
         val phones = mutableListOf<TypedValue>()
         val emails = mutableListOf<TypedValue>()
         val addresses = mutableListOf<TypedValue>()
@@ -327,13 +367,26 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
         resolver.query(
             Data.CONTENT_URI,
             null,
-            "${Data.CONTACT_ID} = ?",
-            arrayOf(contactId.toString()),
+            dataSelection.selection,
+            dataSelection.selectionArgs.toTypedArray(),
             null,
         )?.use { cursor ->
             val mimeIdx = cursor.getColumnIndexOrThrow(Data.MIMETYPE)
             while (cursor.moveToNext()) {
                 when (cursor.getString(mimeIdx)) {
+                    CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE -> {
+                        val rowGiven = cursor.getStringSafe(CommonDataKinds.StructuredName.GIVEN_NAME)
+                        val rowFamily = cursor.getStringSafe(CommonDataKinds.StructuredName.FAMILY_NAME)
+                        if (given.isNullOrBlank()) given = rowGiven
+                        if (family.isNullOrBlank()) family = rowFamily
+                        if (displayName.isBlank()) {
+                            displayName = cursor.getStringSafe(CommonDataKinds.StructuredName.DISPLAY_NAME)
+                                ?.takeIf { it.isNotBlank() }
+                                ?: listOf(rowGiven, rowFamily)
+                                    .filter { !it.isNullOrBlank() }
+                                    .joinToString(" ")
+                        }
+                    }
                     CommonDataKinds.Phone.CONTENT_ITEM_TYPE -> {
                         val number = cursor.getStringSafe(CommonDataKinds.Phone.NUMBER) ?: continue
                         val type = cursor.getIntSafe(CommonDataKinds.Phone.TYPE)
@@ -367,16 +420,21 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
             }
         }
 
-        ContactDetail(
+        val resolvedDisplayName = resolveContactDisplayName(
+            dataDisplayName = displayName,
+            fallbackDisplayName = displayNameFallback,
+        )
+
+        return ContactDetail(
             contact = Contact(
                 rawContactId = rawContactId,
                 lookupKey = lookupKey,
-                displayName = displayName,
+                displayName = resolvedDisplayName,
                 familyName = family,
                 givenName = given,
                 primaryPhone = phones.firstOrNull()?.value,
                 primaryEmail = emails.firstOrNull()?.value,
-                sectionLetter = sectionLetterFor(displayName),
+                sectionLetter = sectionLetterFor(resolvedDisplayName),
             ),
             phones = phones,
             emails = emails,
@@ -385,6 +443,32 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
             notes = notes,
             birthday = birthday,
         )
+    }
+
+    private fun rawContactBelongsToContact(rawContactId: Long, contactId: Long): Boolean {
+        resolver.query(
+            RawContacts.CONTENT_URI,
+            arrayOf(RawContacts._ID),
+            "${RawContacts._ID} = ? AND ${RawContacts.CONTACT_ID} = ?",
+            arrayOf(rawContactId.toString(), contactId.toString()),
+            null,
+        )?.use { cursor ->
+            return cursor.moveToFirst()
+        }
+        return false
+    }
+
+    private fun displayNameForContactId(contactId: Long): String? {
+        resolver.query(
+            Contacts.CONTENT_URI,
+            arrayOf(Contacts.DISPLAY_NAME_PRIMARY),
+            "${Contacts._ID} = ?",
+            arrayOf(contactId.toString()),
+            null,
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) return cursor.getString(0)?.takeIf { it.isNotBlank() }
+        }
+        return null
     }
 
     private fun parseBirthday(raw: String?): LocalDate? {
@@ -408,14 +492,15 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
 
     override suspend fun update(rawContactId: Long, detail: ContactDetail) =
         withContext<Unit>(Dispatchers.IO) {
-            // Re-insert strategy (see file header). One applyBatch:
-            //   1. Delete every Data row for the rawContactId.
-            //   2. Insert the new Data rows from `detail`.
+            if (!isStillContactRawInternal(rawContactId)) return@withContext
+            // Re-insert Still-supported rows while preserving unsupported provider data
+            // such as photos, websites, nicknames, and custom mimetypes.
+            val replaceSelection = supportedDataReplaceSelection(rawContactId)
             val ops = ArrayList<ContentProviderOperation>()
             ops += ContentProviderOperation.newDelete(Data.CONTENT_URI)
                 .withSelection(
-                    "${Data.RAW_CONTACT_ID} = ?",
-                    arrayOf(rawContactId.toString()),
+                    replaceSelection.selection,
+                    replaceSelection.selectionArgs.toTypedArray(),
                 )
                 .build()
             appendDataInsertsForExistingRaw(ops, rawContactId, detail)
@@ -423,6 +508,7 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
         }
 
     override suspend fun delete(rawContactId: Long) = withContext<Unit>(Dispatchers.IO) {
+        if (!isStillContactRawInternal(rawContactId)) return@withContext
         // CALLER_IS_SYNCADAPTER=true → hard delete. Without it the provider keeps the row
         // around as a "deleted=1" tombstone for sync-engine reconciliation, which we do
         // not want because we are not a sync adapter.
@@ -456,26 +542,17 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
         inserted
     }
 
-    override suspend fun deleteAllStillContactsRaws(account: AccountTarget): Int =
+    override suspend fun deleteAllStillContactsRaws(): Int =
         withContext(Dispatchers.IO) {
-            val (accountName, accountType) = when (account) {
-                is AccountTarget.PhoneOnly -> null to null
-                is AccountTarget.Named -> account.name to account.type
-            }
-            val selection = buildString {
-                append("${RawContacts.SOURCE_ID} = ?")
-                if (accountName != null) append(" AND ${RawContacts.ACCOUNT_NAME} = ? AND ${RawContacts.ACCOUNT_TYPE} = ?")
-                else append(" AND ${RawContacts.ACCOUNT_NAME} IS NULL AND ${RawContacts.ACCOUNT_TYPE} IS NULL")
-            }
-            val args = if (accountName != null) {
-                arrayOf(STILL_CONTACTS_SOURCE_ID, accountName, accountType)
-            } else {
-                arrayOf(STILL_CONTACTS_SOURCE_ID)
-            }
+            val deleteSelection = stillContactsDeleteSelection()
             val uri = RawContacts.CONTENT_URI.buildUpon()
                 .appendQueryParameter(ContactsContract.CALLER_IS_SYNCADAPTER, "true")
                 .build()
-            resolver.delete(uri, selection, args)
+            resolver.delete(
+                uri,
+                deleteSelection.selection,
+                deleteSelection.selectionArgs.toTypedArray(),
+            )
         }
 
     override suspend fun listWritableAccounts(): List<AccountTarget.Named> =
@@ -513,21 +590,45 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
     override suspend fun lookupRawContactId(lookupKey: String): Long? =
         withContext(Dispatchers.IO) {
             val contactId = contactIdForLookup(lookupKey) ?: return@withContext null
-            firstRawContactIdFor(contactId)
+            preferredRawContactIdFor(contactId)
         }
+
+    override suspend fun isStillContactRaw(rawContactId: Long): Boolean =
+        withContext(Dispatchers.IO) { isStillContactRawInternal(rawContactId) }
+
+    private fun isStillContactRawInternal(rawContactId: Long): Boolean {
+        resolver.query(
+            RawContacts.CONTENT_URI,
+            arrayOf(RawContacts._ID),
+            "${RawContacts._ID} = ? AND ${RawContacts.SOURCE_ID} = ?",
+            arrayOf(rawContactId.toString(), STILL_CONTACTS_SOURCE_ID),
+            null,
+        )?.use { cursor ->
+            return cursor.moveToFirst()
+        }
+        return false
+    }
 
     override suspend fun loadAllForExport(): List<ContactDetail> = withContext(Dispatchers.IO) {
         val list = mutableListOf<ContactDetail>()
         resolver.query(
             Contacts.CONTENT_URI,
-            arrayOf(Contacts.LOOKUP_KEY),
+            arrayOf(Contacts._ID, Contacts.LOOKUP_KEY, Contacts.DISPLAY_NAME_PRIMARY),
             null,
             null,
             null,
         )?.use { cursor ->
             while (cursor.moveToNext()) {
-                val key = cursor.getString(0) ?: continue
-                getDetail(key)?.let { list += it }
+                val contactId = cursor.getLong(0)
+                val key = cursor.getString(1) ?: continue
+                val displayNameFallback = cursor.getString(2)
+                val rawContactId = preferredRawContactIdFor(contactId) ?: continue
+                list += readDetailRows(
+                    lookupKey = key,
+                    rawContactId = rawContactId,
+                    dataSelection = aggregateContactDataSelection(contactId),
+                    displayNameFallback = displayNameFallback,
+                )
             }
         }
         list
@@ -662,3 +763,7 @@ private fun android.database.Cursor.getIntSafe(column: String): Int {
     return getInt(idx)
 }
 
+internal fun resolveContactDisplayName(
+    dataDisplayName: String,
+    fallbackDisplayName: String?,
+): String = dataDisplayName.ifBlank { fallbackDisplayName.orEmpty() }

@@ -34,7 +34,10 @@ internal object VCardLexer {
         for (line in rawLines) {
             if (line.isEmpty()) continue
             val first = line[0]
-            if ((first == ' ' || first == '\t') && logical.isNotEmpty()) {
+            if (logical.lastOrNull()?.isQuotedPrintableSoftBreak() == true) {
+                val continuation = if (first == ' ' || first == '\t') line.substring(1) else line
+                logical.last().append('\n').append(continuation)
+            } else if ((first == ' ' || first == '\t') && logical.isNotEmpty()) {
                 // Continuation: drop the single leading whitespace char per RFC 6350.
                 logical.last().append(line.substring(1))
             } else {
@@ -42,5 +45,28 @@ internal object VCardLexer {
             }
         }
         return logical.map { it.toString() }
+    }
+
+    private fun StringBuilder.isQuotedPrintableSoftBreak(): Boolean {
+        if (!endsWith("=")) return false
+        val colon = indexOf(":")
+        if (colon < 0) return false
+        return substring(0, colon)
+            .split(';')
+            .drop(1)
+            .any { param ->
+                val key = param.substringBefore('=', missingDelimiterValue = "").trim()
+                if (!key.equals("ENCODING", ignoreCase = true)) return@any false
+                param.substringAfter('=')
+                    .trim()
+                    .trim('"')
+                    .split(',')
+                    .any { value ->
+                        value.trim().trim('"').let {
+                            it.equals("QUOTED-PRINTABLE", ignoreCase = true) ||
+                                it.equals("QP", ignoreCase = true)
+                        }
+                    }
+            }
     }
 }

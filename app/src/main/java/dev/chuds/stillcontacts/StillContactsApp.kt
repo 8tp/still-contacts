@@ -97,6 +97,7 @@ fun StillContactsApp(
             ) == PackageManager.PERMISSION_GRANTED,
         )
     }
+    var pendingImportUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
 
     val readPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -107,7 +108,10 @@ fun StillContactsApp(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
         writeGranted = granted
-        if (!granted) Toast.makeText(activityContext, "write access denied", Toast.LENGTH_SHORT).show()
+        if (!granted) {
+            pendingImportUris = emptyList()
+            Toast.makeText(activityContext, "write access denied", Toast.LENGTH_SHORT).show()
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -144,11 +148,7 @@ fun StillContactsApp(
         ActivityResultContracts.OpenMultipleDocuments(),
     ) { uris ->
         if (uris.isNotEmpty()) {
-            scope.launch {
-                if (!ensureWrite(writeGranted, writePermissionLauncher::launch)) return@launch
-                val n = importVCardsFromUris(activityContext, uris, repository, settings.accountTarget)
-                Toast.makeText(activityContext, "imported $n contacts", Toast.LENGTH_SHORT).show()
-            }
+            pendingImportUris = uris
         }
     }
     val exportSingleLauncher = rememberLauncherForActivityResult(
@@ -178,12 +178,18 @@ fun StillContactsApp(
         }
     }
 
-    // ACTION_VIEW for a .vcf — read once and import.
-    LaunchedEffect(incomingViewUri, readGranted) {
-        val uri = incomingViewUri ?: return@LaunchedEffect
+    // ACTION_VIEW for a .vcf — enqueue once, then import after WRITE_CONTACTS is granted.
+    LaunchedEffect(incomingViewUri) {
+        pendingImportUris = incomingViewUri?.let(::listOf) ?: return@LaunchedEffect
+    }
+
+    LaunchedEffect(pendingImportUris, writeGranted, settings.accountTarget) {
+        val uris = pendingImportUris
+        if (uris.isEmpty()) return@LaunchedEffect
         if (!ensureWrite(writeGranted, writePermissionLauncher::launch)) return@LaunchedEffect
-        val n = importVCardsFromUris(activityContext, listOf(uri), repository, settings.accountTarget)
+        val n = importVCardsFromUris(activityContext, uris, repository, settings.accountTarget)
         Toast.makeText(activityContext, "imported $n contacts", Toast.LENGTH_SHORT).show()
+        pendingImportUris = emptyList()
     }
 
     fun startImport() {
@@ -197,6 +203,33 @@ fun StillContactsApp(
         pendingBulkExport = true
         val ts = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())
         exportBulkLauncher.launch("still-contacts-$ts.vcf")
+    }
+    fun startAggregateExport(lookupKey: String, fallback: ContactDetail? = null) {
+        scope.launch {
+            val detail = repository.getAggregateDetail(lookupKey) ?: fallback ?: return@launch
+            startSingleExport(detail)
+        }
+    }
+    fun openOwnedEdit(lookupKey: String, rawContactId: Long) {
+        scope.launch {
+            if (!repository.isStillContactRaw(rawContactId)) {
+                Toast.makeText(activityContext, "view-only contact", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            if (!writeGranted) writePermissionLauncher.launch(Manifest.permission.WRITE_CONTACTS)
+            route = Route.Edit(lookupKey, rawContactId)
+        }
+    }
+    fun deleteOwnedRaw(rawContactId: Long) {
+        scope.launch {
+            if (!repository.isStillContactRaw(rawContactId)) {
+                Toast.makeText(activityContext, "view-only contact", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            if (!ensureWrite(writeGranted, writePermissionLauncher::launch)) return@launch
+            repository.delete(rawContactId)
+            route = Route.List
+        }
     }
 
     BackHandler(enabled = route !is Route.List) { route = Route.List }
@@ -232,7 +265,7 @@ fun StillContactsApp(
                             )
                             onPicked(pickedUri)
                         } else {
-                            route = Route.Detail(c.lookupKey)
+                            route = Route.Detail(c.lookupKey, c.rawContactId)
                         }
                     },
                     onLongPressContact = { actionTarget = it },
@@ -247,26 +280,29 @@ fun StillContactsApp(
                 )
             }
             is Route.Detail -> {
-                var detailState by remember(current.lookupKey) { mutableStateOf<ContactDetail?>(null) }
-                LaunchedEffect(current.lookupKey, contacts) {
-                    detailState = repository.getDetail(current.lookupKey)
+                var detailState by remember(current.lookupKey, current.rawContactId) {
+                    mutableStateOf<ContactDetail?>(null)
+                }
+                LaunchedEffect(current.lookupKey, current.rawContactId, contacts) {
+                    detailState = repository.getAggregateDetail(current.lookupKey)
                 }
                 detailState?.let { d ->
                     ContactDetailScreen(
                         detail = d,
                         onBack = { route = Route.List },
                         onEdit = {
-                            if (!writeGranted) writePermissionLauncher.launch(Manifest.permission.WRITE_CONTACTS)
-                            route = Route.Edit(current.lookupKey)
+                            openOwnedEdit(current.lookupKey, d.contact.rawContactId)
                         },
-                        onExport = { startSingleExport(d) },
+                        onExport = { startAggregateExport(current.lookupKey, d) },
                     )
                 }
             }
             is Route.Edit -> {
-                var detailState by remember(current.lookupKey) { mutableStateOf<ContactDetail?>(null) }
-                LaunchedEffect(current.lookupKey) {
-                    detailState = repository.getDetail(current.lookupKey)
+                var detailState by remember(current.lookupKey, current.rawContactId) {
+                    mutableStateOf<ContactDetail?>(null)
+                }
+                LaunchedEffect(current.lookupKey, current.rawContactId) {
+                    detailState = repository.getDetail(current.lookupKey, current.rawContactId)
                 }
                 detailState?.let { d ->
                     ContactEditScreen(
@@ -274,16 +310,14 @@ fun StillContactsApp(
                         onSave = { edited ->
                             scope.launch {
                                 if (!ensureWrite(writeGranted, writePermissionLauncher::launch)) return@launch
-                                val rawId = repository.lookupRawContactId(current.lookupKey) ?: d.contact.rawContactId
-                                repository.update(rawId, edited)
+                                repository.update(d.contact.rawContactId, edited)
                                 route = Route.List
                             }
                         },
                         onDelete = {
                             scope.launch {
                                 if (!ensureWrite(writeGranted, writePermissionLauncher::launch)) return@launch
-                                val rawId = repository.lookupRawContactId(current.lookupKey) ?: d.contact.rawContactId
-                                repository.delete(rawId)
+                                repository.delete(d.contact.rawContactId)
                                 route = Route.List
                             }
                         },
@@ -355,7 +389,7 @@ fun StillContactsApp(
                     onDeleteAll = {
                         scope.launch {
                             if (!ensureWrite(writeGranted, writePermissionLauncher::launch)) return@launch
-                            val n = repository.deleteAllStillContactsRaws(settings.accountTarget)
+                            val n = repository.deleteAllStillContactsRaws()
                             Toast.makeText(
                                 activityContext,
                                 "deleted $n still-contacts entries",
@@ -374,27 +408,19 @@ fun StillContactsApp(
             displayName = c.displayName,
             onOpen = {
                 actionTarget = null
-                route = Route.Detail(c.lookupKey)
+                route = Route.Detail(c.lookupKey, c.rawContactId)
             },
             onEdit = {
-                if (!writeGranted) writePermissionLauncher.launch(Manifest.permission.WRITE_CONTACTS)
                 actionTarget = null
-                route = Route.Edit(c.lookupKey)
+                openOwnedEdit(c.lookupKey, c.rawContactId)
             },
             onExport = {
                 actionTarget = null
-                scope.launch {
-                    val d = repository.getDetail(c.lookupKey) ?: return@launch
-                    startSingleExport(d)
-                }
+                startAggregateExport(c.lookupKey)
             },
             onDelete = {
                 actionTarget = null
-                scope.launch {
-                    if (!ensureWrite(writeGranted, writePermissionLauncher::launch)) return@launch
-                    val rawId = repository.lookupRawContactId(c.lookupKey) ?: c.rawContactId
-                    repository.delete(rawId)
-                }
+                deleteOwnedRaw(c.rawContactId)
             },
             onDismiss = { actionTarget = null },
         )
@@ -411,8 +437,8 @@ private fun ensureWrite(granted: Boolean, request: (String) -> Unit): Boolean {
 
 private sealed interface Route {
     data object List : Route
-    data class Detail(val lookupKey: String) : Route
-    data class Edit(val lookupKey: String) : Route
+    data class Detail(val lookupKey: String, val rawContactId: Long) : Route
+    data class Edit(val lookupKey: String, val rawContactId: Long) : Route
     data object New : Route
     data object Settings : Route
 }

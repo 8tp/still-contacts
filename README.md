@@ -4,6 +4,8 @@
 
 #### A local-only contacts app that never asks you to sign in.
 
+part of the [still](STILL.md) family. the pact governs every line of code in this repo.
+
 <br>
 
 <img src="docs/screenshots/list.png" width="180" alt="Contacts list — alphabetical with letter rail and sticky section headers">&nbsp;<img src="docs/screenshots/detail.png" width="180" alt="Contact detail — typed rows for phones, emails, addresses">&nbsp;<img src="docs/screenshots/edit.png" width="180" alt="Contact editor — single scrollable form, lowercase verbs, tap-to-cycle type labels">&nbsp;<img src="docs/screenshots/settings.png" width="180" alt="Settings — font preset, name display, sort, default account, import/export">
@@ -41,7 +43,7 @@ It declares no internet permission. It ships no analytics. It depends on neither
 | Refused / asked | Why |
 | --- | --- |
 | `INTERNET` permission | Refused. The app has no networking dependency. |
-| `GET_ACCOUNTS` permission | Refused. There is no in-app account picker. New contacts go to the configured default writable account; account creation is the OS Settings's job. |
+| `GET_ACCOUNTS` permission | Refused. There is no per-contact account picker and no account creation flow. Settings can choose the default writable account from provider-visible accounts; new contacts use that default. |
 | `CALL_PHONE` permission | Refused. Tapping a phone number fires `ACTION_DIAL`; the user's chosen dialer places the actual call. Still Contacts is never the thing that calls. |
 | Media / photo permissions | Refused. v0.1 has no contact photos — neither read nor write nor display. |
 | CardDAV, Google Contacts sync, Exchange | Refused. No account-add flow of any kind. |
