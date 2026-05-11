@@ -172,7 +172,7 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
 
                 // primary phone / email — one extra small lookup. For 500-row lists this
                 // is fine; if it ever isn't, this is the spot to cache.
-                val rawContactId = firstRawContactIdFor(contactId) ?: continue
+                val rawContactId = preferredRawContactIdFor(contactId) ?: continue
                 val phone = primaryPhoneFor(contactId)
                 val email = if (phone == null) primaryEmailFor(contactId) else null
                 val (given, family) = givenFamilyFor(contactId)
@@ -205,17 +205,30 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
         return if (first.isLetter()) first.uppercaseChar() else '#'
     }
 
-    private fun firstRawContactIdFor(contactId: Long): Long? {
+    private fun preferredRawContactIdFor(contactId: Long): Long? {
+        val rows = mutableListOf<RawContactSourceRow>()
         resolver.query(
             RawContacts.CONTENT_URI,
-            arrayOf(RawContacts._ID),
+            arrayOf(
+                RawContacts._ID,
+                RawContacts.SOURCE_ID,
+                RawContacts.ACCOUNT_NAME,
+                RawContacts.ACCOUNT_TYPE,
+            ),
             "${RawContacts.CONTACT_ID} = ?",
             arrayOf(contactId.toString()),
             "${RawContacts._ID} ASC",
         )?.use { cursor ->
-            if (cursor.moveToFirst()) return cursor.getLong(0)
+            while (cursor.moveToNext()) {
+                rows += RawContactSourceRow(
+                    rawContactId = cursor.getLong(0),
+                    sourceId = cursor.getString(1),
+                    accountName = cursor.getString(2),
+                    accountType = cursor.getString(3),
+                )
+            }
         }
-        return null
+        return preferredRawContactId(rows)
     }
 
     private fun primaryPhoneFor(contactId: Long): String? {
@@ -313,7 +326,7 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
                 .takeIf { rawContactBelongsToContact(it, contactId) }
                 ?: return@withContext null
         } else {
-            firstRawContactIdFor(contactId) ?: return@withContext null
+            preferredRawContactIdFor(contactId) ?: return@withContext null
         }
 
         readDetailRows(
@@ -326,7 +339,7 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
 
     override suspend fun getAggregateDetail(lookupKey: String): ContactDetail? = withContext(Dispatchers.IO) {
         val contactId = contactIdForLookup(lookupKey) ?: return@withContext null
-        val rawContactId = firstRawContactIdFor(contactId) ?: return@withContext null
+        val rawContactId = preferredRawContactIdFor(contactId) ?: return@withContext null
         readDetailRows(
             lookupKey = lookupKey,
             rawContactId = rawContactId,
@@ -577,7 +590,7 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
     override suspend fun lookupRawContactId(lookupKey: String): Long? =
         withContext(Dispatchers.IO) {
             val contactId = contactIdForLookup(lookupKey) ?: return@withContext null
-            firstRawContactIdFor(contactId)
+            preferredRawContactIdFor(contactId)
         }
 
     override suspend fun isStillContactRaw(rawContactId: Long): Boolean =
@@ -609,7 +622,7 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
                 val contactId = cursor.getLong(0)
                 val key = cursor.getString(1) ?: continue
                 val displayNameFallback = cursor.getString(2)
-                val rawContactId = firstRawContactIdFor(contactId) ?: continue
+                val rawContactId = preferredRawContactIdFor(contactId) ?: continue
                 list += readDetailRows(
                     lookupKey = key,
                     rawContactId = rawContactId,

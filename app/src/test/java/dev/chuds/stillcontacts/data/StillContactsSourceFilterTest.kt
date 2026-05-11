@@ -40,6 +40,44 @@ class StillContactsSourceFilterTest {
         )
     }
 
+    @Test fun preferredRawContactChoosesStillOwnedRawOverEarlierExternalRaw() {
+        val rows = listOf(
+            RawContactSourceRow(
+                rawContactId = 1L,
+                sourceId = "external",
+                accountName = "sync@example.com",
+                accountType = "com.example",
+            ),
+            RawContactSourceRow(
+                rawContactId = 5L,
+                sourceId = STILL_CONTACTS_SOURCE_ID,
+                accountName = null,
+                accountType = null,
+            ),
+        )
+
+        assertEquals(5L, preferredRawContactId(rows))
+    }
+
+    @Test fun preferredRawContactFallsBackToFirstExternalRaw() {
+        val rows = listOf(
+            RawContactSourceRow(
+                rawContactId = 7L,
+                sourceId = "external",
+                accountName = null,
+                accountType = null,
+            ),
+            RawContactSourceRow(
+                rawContactId = 9L,
+                sourceId = null,
+                accountName = null,
+                accountType = null,
+            ),
+        )
+
+        assertEquals(7L, preferredRawContactId(rows))
+    }
+
     @Test fun filtersNamedAccountRowsByStillContactsSourceIdAndAccount() {
         val rows = listOf(
             RawContactSourceRow(

@@ -284,14 +284,14 @@ fun StillContactsApp(
                     mutableStateOf<ContactDetail?>(null)
                 }
                 LaunchedEffect(current.lookupKey, current.rawContactId, contacts) {
-                    detailState = repository.getDetail(current.lookupKey, current.rawContactId)
+                    detailState = repository.getAggregateDetail(current.lookupKey)
                 }
                 detailState?.let { d ->
                     ContactDetailScreen(
                         detail = d,
                         onBack = { route = Route.List },
                         onEdit = {
-                            openOwnedEdit(current.lookupKey, current.rawContactId)
+                            openOwnedEdit(current.lookupKey, d.contact.rawContactId)
                         },
                         onExport = { startAggregateExport(current.lookupKey, d) },
                     )

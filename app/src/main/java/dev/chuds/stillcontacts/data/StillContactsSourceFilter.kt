@@ -21,6 +21,12 @@ internal fun stillContactsRawContactIds(
     .filter { it.isStillContactsRaw(account) }
     .map { it.rawContactId }
 
+internal fun preferredRawContactId(rows: Iterable<RawContactSourceRow>): Long? {
+    val ordered = rows.sortedBy { it.rawContactId }
+    return ordered.firstOrNull { it.sourceId == STILL_CONTACTS_SOURCE_ID }?.rawContactId
+        ?: ordered.firstOrNull()?.rawContactId
+}
+
 internal fun stillContactsDeleteSelection(account: AccountTarget): RawContactsDeleteSelection =
     when (account) {
         AccountTarget.PhoneOnly -> RawContactsDeleteSelection(
