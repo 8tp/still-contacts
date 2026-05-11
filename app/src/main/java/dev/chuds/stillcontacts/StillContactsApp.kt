@@ -98,6 +98,7 @@ fun StillContactsApp(
         )
     }
     var pendingImportUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var pendingEditRoute by remember { mutableStateOf<Route.Edit?>(null) }
 
     val readPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -110,6 +111,7 @@ fun StillContactsApp(
         writeGranted = granted
         if (!granted) {
             pendingImportUris = emptyList()
+            pendingEditRoute = null
             Toast.makeText(activityContext, "write access denied", Toast.LENGTH_SHORT).show()
         }
     }
@@ -192,6 +194,13 @@ fun StillContactsApp(
         pendingImportUris = emptyList()
     }
 
+    LaunchedEffect(pendingEditRoute, writeGranted) {
+        val queued = pendingEditRoute ?: return@LaunchedEffect
+        if (!writeGranted) return@LaunchedEffect
+        pendingEditRoute = null
+        route = queued
+    }
+
     fun startImport() {
         importLauncher.launch(arrayOf("text/vcard", "text/x-vcard", "text/plain", "application/octet-stream"))
     }
@@ -216,7 +225,11 @@ fun StillContactsApp(
                 Toast.makeText(activityContext, "view-only contact", Toast.LENGTH_SHORT).show()
                 return@launch
             }
-            if (!writeGranted) writePermissionLauncher.launch(Manifest.permission.WRITE_CONTACTS)
+            if (!writeGranted) {
+                pendingEditRoute = Route.Edit(lookupKey, rawContactId)
+                writePermissionLauncher.launch(Manifest.permission.WRITE_CONTACTS)
+                return@launch
+            }
             route = Route.Edit(lookupKey, rawContactId)
         }
     }
