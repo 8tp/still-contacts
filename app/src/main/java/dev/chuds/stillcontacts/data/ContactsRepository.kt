@@ -493,7 +493,10 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
         withContext<Unit>(Dispatchers.IO) {
             if (!isStillContactRawInternal(rawContactId)) return@withContext
             // Re-insert Still-supported rows while preserving unsupported provider data
-            // such as photos, websites, nicknames, and custom mimetypes.
+            // such as photos, websites, nicknames, and custom mimetypes. Org subfields
+            // (TITLE/DEPARTMENT/JOB_DESCRIPTION) live on the row we're about to delete, so
+            // capture them first and pass them through so the rewrite is loss-free.
+            val preservedOrg = readOrganizationSubfields(rawContactId)
             val replaceSelection = supportedDataReplaceSelection(rawContactId)
             val ops = ArrayList<ContentProviderOperation>()
             ops += ContentProviderOperation.newDelete(Data.CONTENT_URI)
@@ -502,9 +505,34 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
                     replaceSelection.selectionArgs.toTypedArray(),
                 )
                 .build()
-            appendDataInsertsForExistingRaw(ops, rawContactId, detail)
+            appendDataInsertsForExistingRaw(ops, rawContactId, detail, preservedOrg)
             resolver.applyBatch(ContactsContract.AUTHORITY, ops)
         }
+
+    private fun readOrganizationSubfields(rawContactId: Long): OrganizationSubfields {
+        resolver.query(
+            Data.CONTENT_URI,
+            arrayOf(
+                CommonDataKinds.Organization.TITLE,
+                CommonDataKinds.Organization.DEPARTMENT,
+                CommonDataKinds.Organization.JOB_DESCRIPTION,
+                CommonDataKinds.Organization.TYPE,
+            ),
+            "${Data.RAW_CONTACT_ID} = ? AND ${Data.MIMETYPE} = ?",
+            arrayOf(rawContactId.toString(), CommonDataKinds.Organization.CONTENT_ITEM_TYPE),
+            "${Data._ID} ASC",
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                return OrganizationSubfields(
+                    title = cursor.getString(0),
+                    department = cursor.getString(1),
+                    jobDescription = cursor.getString(2),
+                    type = if (cursor.isNull(3)) null else cursor.getInt(3),
+                )
+            }
+        }
+        return OrganizationSubfields.Empty
+    }
 
     override suspend fun delete(rawContactId: Long) = withContext<Unit>(Dispatchers.IO) {
         if (!isStillContactRawInternal(rawContactId)) return@withContext
@@ -660,7 +688,14 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
                 .build()
         }
 
-        appendCommonInserts(ops, rawContactBackref, useBackref = true, rawContactId = -1L, detail)
+        appendCommonInserts(
+            ops,
+            rawContactBackref,
+            useBackref = true,
+            rawContactId = -1L,
+            detail,
+            preservedOrg = OrganizationSubfields.Empty,
+        )
     }
 
     /** Inserts referencing an existing RawContacts row by id (used by update). */
@@ -668,6 +703,7 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
         ops: ArrayList<ContentProviderOperation>,
         rawContactId: Long,
         detail: ContactDetail,
+        preservedOrg: OrganizationSubfields,
     ) {
         if (!detail.contact.givenName.isNullOrBlank() || !detail.contact.familyName.isNullOrBlank() || detail.contact.displayName.isNotBlank()) {
             ops += ContentProviderOperation.newInsert(Data.CONTENT_URI)
@@ -678,7 +714,14 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
                 .withValue(CommonDataKinds.StructuredName.DISPLAY_NAME, detail.contact.displayName.ifBlank { null })
                 .build()
         }
-        appendCommonInserts(ops, backref = -1, useBackref = false, rawContactId = rawContactId, detail)
+        appendCommonInserts(
+            ops,
+            backref = -1,
+            useBackref = false,
+            rawContactId = rawContactId,
+            detail,
+            preservedOrg = preservedOrg,
+        )
     }
 
     private fun appendCommonInserts(
@@ -687,6 +730,7 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
         useBackref: Boolean,
         rawContactId: Long,
         detail: ContactDetail,
+        preservedOrg: OrganizationSubfields,
     ) {
         fun newInsertBuilder() = ContentProviderOperation.newInsert(Data.CONTENT_URI).apply {
             if (useBackref) withValueBackReference(Data.RAW_CONTACT_ID, backref)
@@ -718,11 +762,11 @@ class ContactsRepositoryImpl(context: Context) : ContactsRepository {
         }
 
         detail.organization?.takeIf { it.isNotBlank() }?.let { org ->
-            ops += newInsertBuilder()
+            val values = organizationInsertValues(org, preservedOrg)
+            val builder = newInsertBuilder()
                 .withValue(Data.MIMETYPE, CommonDataKinds.Organization.CONTENT_ITEM_TYPE)
-                .withValue(CommonDataKinds.Organization.COMPANY, org)
-                .withValue(CommonDataKinds.Organization.TYPE, CommonDataKinds.Organization.TYPE_WORK)
-                .build()
+            values.forEach { (column, value) -> builder.withValue(column, value) }
+            ops += builder.build()
         }
 
         detail.notes?.takeIf { it.isNotBlank() }?.let { note ->

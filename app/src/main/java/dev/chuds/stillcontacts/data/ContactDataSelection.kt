@@ -20,6 +20,45 @@ internal fun aggregateContactDataSelection(contactId: Long): ContactDataSelectio
         selectionArgs = listOf(contactId.toString()),
     )
 
+internal data class OrganizationSubfields(
+    val title: String?,
+    val department: String?,
+    val jobDescription: String?,
+    val type: Int? = null,
+) {
+    fun isEmpty(): Boolean =
+        title.isNullOrBlank() && department.isNullOrBlank() && jobDescription.isNullOrBlank()
+
+    companion object {
+        val Empty = OrganizationSubfields(null, null, null, null)
+    }
+}
+
+/**
+ * Merge the new company string with any preserved subfields read from the existing org row.
+ * Returns a column→value map; blank/null values are dropped so the provider treats them as
+ * absent. TYPE defaults to TYPE_WORK when no preserved type is known.
+ */
+internal fun organizationInsertValues(
+    company: String,
+    preserved: OrganizationSubfields,
+): Map<String, Any?> {
+    val values = LinkedHashMap<String, Any?>()
+    values[CommonDataKinds.Organization.COMPANY] = company
+    values[CommonDataKinds.Organization.TYPE] =
+        preserved.type ?: CommonDataKinds.Organization.TYPE_WORK
+    preserved.title?.takeIf { it.isNotBlank() }?.let {
+        values[CommonDataKinds.Organization.TITLE] = it
+    }
+    preserved.department?.takeIf { it.isNotBlank() }?.let {
+        values[CommonDataKinds.Organization.DEPARTMENT] = it
+    }
+    preserved.jobDescription?.takeIf { it.isNotBlank() }?.let {
+        values[CommonDataKinds.Organization.JOB_DESCRIPTION] = it
+    }
+    return values
+}
+
 internal fun supportedDataReplaceSelection(rawContactId: Long): ContactDataSelection {
     val replaceMimetypes = listOf(
         CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE,

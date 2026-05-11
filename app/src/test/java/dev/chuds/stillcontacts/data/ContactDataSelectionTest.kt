@@ -3,6 +3,7 @@ package dev.chuds.stillcontacts.data
 import android.provider.ContactsContract.Data
 import android.provider.ContactsContract.CommonDataKinds
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -52,5 +53,58 @@ class ContactDataSelectionTest {
                 fallbackDisplayName = "Provider Name",
             ),
         )
+    }
+
+    @Test fun organizationInsertPreservesTitleDepartmentAndJobDescription() {
+        val values = organizationInsertValues(
+            company = "Sorbonne",
+            preserved = OrganizationSubfields(
+                title = "Professor",
+                department = "Physics",
+                jobDescription = "Research lead",
+                type = CommonDataKinds.Organization.TYPE_OTHER,
+            ),
+        )
+
+        assertEquals("Sorbonne", values[CommonDataKinds.Organization.COMPANY])
+        assertEquals("Professor", values[CommonDataKinds.Organization.TITLE])
+        assertEquals("Physics", values[CommonDataKinds.Organization.DEPARTMENT])
+        assertEquals("Research lead", values[CommonDataKinds.Organization.JOB_DESCRIPTION])
+        assertEquals(
+            CommonDataKinds.Organization.TYPE_OTHER,
+            values[CommonDataKinds.Organization.TYPE],
+        )
+    }
+
+    @Test fun organizationInsertDefaultsToWorkTypeWhenNoTypeIsPreserved() {
+        val values = organizationInsertValues(
+            company = "Acme",
+            preserved = OrganizationSubfields.Empty,
+        )
+
+        assertEquals("Acme", values[CommonDataKinds.Organization.COMPANY])
+        assertEquals(
+            CommonDataKinds.Organization.TYPE_WORK,
+            values[CommonDataKinds.Organization.TYPE],
+        )
+        assertFalse(values.containsKey(CommonDataKinds.Organization.TITLE))
+        assertFalse(values.containsKey(CommonDataKinds.Organization.DEPARTMENT))
+        assertFalse(values.containsKey(CommonDataKinds.Organization.JOB_DESCRIPTION))
+    }
+
+    @Test fun organizationInsertDropsBlankPreservedSubfields() {
+        val values = organizationInsertValues(
+            company = "Acme",
+            preserved = OrganizationSubfields(
+                title = "  ",
+                department = "",
+                jobDescription = null,
+                type = null,
+            ),
+        )
+
+        assertFalse(values.containsKey(CommonDataKinds.Organization.TITLE))
+        assertFalse(values.containsKey(CommonDataKinds.Organization.DEPARTMENT))
+        assertFalse(values.containsKey(CommonDataKinds.Organization.JOB_DESCRIPTION))
     }
 }
